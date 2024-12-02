@@ -1,3 +1,13 @@
+# 🌿🪑 [SPA-Bench](https://github.com/ai-agents-2030/SPA-Bench) – Major Adaptation for [AppAgent](https://github.com/mnotgod96/AppAgent) 🔧
+
+- Logs of agent-executed trajectories (screenshots, actions, errors, token costs, number of steps).
+- Removal of intermediate screenshots.
+- Integration of [ADBKeyBoard](https://github.com/senzhk/ADBKeyBoard) for inputting Chinese characters.
+- Support for open-source models as replacements for GPT-based models.
+- Disabled exploration phase and documentation usage.
+  
+---
+
 # AppAgent-[TencentQQGYLab](https://github.com/TencentQQGYLab)
 
 <div align="center">
