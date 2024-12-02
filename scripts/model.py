@@ -19,7 +19,14 @@ class BaseModel:
 
 
 class OpenAIModel(BaseModel):
-    def __init__(self, base_url: str, api_key: str, model: str, temperature: float, max_tokens: int):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -27,46 +34,54 @@ class OpenAIModel(BaseModel):
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-    def get_model_response(self, prompt: str, images: List[str]) -> (bool, str):
-        content = [
-            {
-                "type": "text",
-                "text": prompt
-            }
-        ]
+    def get_model_response(
+        self, prompt: str, images: List[str], token_storage: dict = None
+    ):
+        content = [{"type": "text", "text": prompt}]
         for img in images:
             base64_img = encode_image(img)
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{base64_img}"
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},
                 }
-            })
+            )
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": f"Bearer {self.api_key}",
         }
         payload = {
             "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ],
+            "messages": [{"role": "user", "content": content}],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens
         }
-        response = requests.post(self.base_url, headers=headers, json=payload).json()
-        if "error" not in response:
-            usage = response["usage"]
-            prompt_tokens = usage["prompt_tokens"]
-            completion_tokens = usage["completion_tokens"]
-            print_with_color(f"Request cost is "
-                             f"${'{0:.2f}'.format(prompt_tokens / 1000 * 0.01 + completion_tokens / 1000 * 0.03)}",
-                             "yellow")
-        else:
-            return False, response["error"]["message"]
+        response = None
+        try:
+            response = requests.post(
+                self.base_url, headers=headers, json=payload
+            ).json()
+            if "error" not in response:
+                usage = response["usage"]
+                prompt_tokens = usage["prompt_tokens"]
+                completion_tokens = usage["completion_tokens"]
+                print_with_color(
+                    f"Request cost is "
+                    f"${'{0:.2f}'.format(prompt_tokens / 1000 * 0.01 + completion_tokens / 1000 * 0.03)}",
+                    "yellow",
+                )
+            else:
+                return False, response["error"]["message"]
+            if token_storage:
+                token_storage["prompt_tokens"] = prompt_tokens
+                token_storage["completion_tokens"] = completion_tokens
+        except Exception as e:
+            print_with_color(
+                f"ERROR: an exception occurs while parsing the model response: {e}",
+                "red",
+            )
+            print_with_color(f"Response: {response}", "red")
+            return False, str(e)
         return True, response["choices"][0]["message"]["content"]
 
 
@@ -77,21 +92,14 @@ class QwenModel(BaseModel):
         dashscope.api_key = api_key
 
     def get_model_response(self, prompt: str, images: List[str]) -> (bool, str):
-        content = [{
-            "text": prompt
-        }]
+        content = [{"text": prompt}]
         for img in images:
             img_path = f"file://{img}"
-            content.append({
-                "image": img_path
-            })
-        messages = [
-            {
-                "role": "user",
-                "content": content
-            }
-        ]
-        response = dashscope.MultiModalConversation.call(model=self.model, messages=messages)
+            content.append({"image": img_path})
+        messages = [{"role": "user", "content": content}]
+        response = dashscope.MultiModalConversation.call(
+            model=self.model, messages=messages
+        )
         if response.status_code == HTTPStatus.OK:
             return True, response.output.choices[0].message.content[0]["text"]
         else:
@@ -103,7 +111,8 @@ def parse_explore_rsp(rsp):
         observation = re.findall(r"Observation: (.*?)$", rsp, re.MULTILINE)[0]
         think = re.findall(r"Thought: (.*?)$", rsp, re.MULTILINE)[0]
         act = re.findall(r"Action: (.*?)$", rsp, re.MULTILINE)[0]
-        last_act = re.findall(r"Summary: (.*?)$", rsp, re.MULTILINE)[0]
+        summary = re.findall(r"Summary: (.*?)$", rsp, re.MULTILINE)
+        last_act = summary[0] if summary else ""
         print_with_color("Observation:", "yellow")
         print_with_color(observation, "magenta")
         print_with_color("Thought:", "yellow")
@@ -137,7 +146,9 @@ def parse_explore_rsp(rsp):
             print_with_color(f"ERROR: Undefined act {act_name}!", "red")
             return ["ERROR"]
     except Exception as e:
-        print_with_color(f"ERROR: an exception occurs while parsing the model response: {e}", "red")
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
         print_with_color(rsp, "red")
         return ["ERROR"]
 
@@ -147,7 +158,8 @@ def parse_grid_rsp(rsp):
         observation = re.findall(r"Observation: (.*?)$", rsp, re.MULTILINE)[0]
         think = re.findall(r"Thought: (.*?)$", rsp, re.MULTILINE)[0]
         act = re.findall(r"Action: (.*?)$", rsp, re.MULTILINE)[0]
-        last_act = re.findall(r"Summary: (.*?)$", rsp, re.MULTILINE)[0]
+        summary = re.findall(r"Summary: (.*?)$", rsp, re.MULTILINE)
+        last_act = summary[0] if summary else ""
         print_with_color("Observation:", "yellow")
         print_with_color(observation, "magenta")
         print_with_color("Thought:", "yellow")
@@ -175,14 +187,23 @@ def parse_grid_rsp(rsp):
             start_subarea = params[1].strip()[1:-1]
             end_area = int(params[2].strip())
             end_subarea = params[3].strip()[1:-1]
-            return [act_name + "_grid", start_area, start_subarea, end_area, end_subarea, last_act]
+            return [
+                act_name + "_grid",
+                start_area,
+                start_subarea,
+                end_area,
+                end_subarea,
+                last_act,
+            ]
         elif act_name == "grid":
             return [act_name]
         else:
             print_with_color(f"ERROR: Undefined act {act_name}!", "red")
             return ["ERROR"]
     except Exception as e:
-        print_with_color(f"ERROR: an exception occurs while parsing the model response: {e}", "red")
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
         print_with_color(rsp, "red")
         return ["ERROR"]
 
@@ -206,6 +227,8 @@ def parse_reflect_rsp(rsp):
             print_with_color(f"ERROR: Undefined decision {decision}!", "red")
             return ["ERROR"]
     except Exception as e:
-        print_with_color(f"ERROR: an exception occurs while parsing the model response: {e}", "red")
+        print_with_color(
+            f"ERROR: an exception occurs while parsing the model response: {e}", "red"
+        )
         print_with_color(rsp, "red")
         return ["ERROR"]

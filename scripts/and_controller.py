@@ -104,12 +104,15 @@ class AndroidController:
     def get_screenshot(self, prefix, save_dir):
         cap_command = f"adb -s {self.device} shell screencap -p " \
                       f"{os.path.join(self.screenshot_dir, prefix + '.png').replace(self.backslash, '/')}"
+        rm_command = f"adb -s {self.device} shell rm " \
+                        f"{os.path.join(self.screenshot_dir, prefix + '.png').replace(self.backslash, '/')}"
         pull_command = f"adb -s {self.device} pull " \
                        f"{os.path.join(self.screenshot_dir, prefix + '.png').replace(self.backslash, '/')} " \
                        f"{os.path.join(save_dir, prefix + '.png')}"
         result = execute_adb(cap_command)
         if result != "ERROR":
             result = execute_adb(pull_command)
+            execute_adb(rm_command)
             if result != "ERROR":
                 return os.path.join(save_dir, prefix + ".png")
             return result
@@ -118,12 +121,15 @@ class AndroidController:
     def get_xml(self, prefix, save_dir):
         dump_command = f"adb -s {self.device} shell uiautomator dump " \
                        f"{os.path.join(self.xml_dir, prefix + '.xml').replace(self.backslash, '/')}"
+        rm_command = f"adb -s {self.device} shell rm " \
+                        f"{os.path.join(self.xml_dir, prefix + '.xml').replace(self.backslash, '/')}"
         pull_command = f"adb -s {self.device} pull " \
                        f"{os.path.join(self.xml_dir, prefix + '.xml').replace(self.backslash, '/')} " \
                        f"{os.path.join(save_dir, prefix + '.xml')}"
         result = execute_adb(dump_command)
         if result != "ERROR":
             result = execute_adb(pull_command)
+            execute_adb(rm_command)
             if result != "ERROR":
                 return os.path.join(save_dir, prefix + ".xml")
             return result
@@ -139,12 +145,35 @@ class AndroidController:
         ret = execute_adb(adb_command)
         return ret
 
-    def text(self, input_str):
-        input_str = input_str.replace(" ", "%s")
-        input_str = input_str.replace("'", "")
-        adb_command = f"adb -s {self.device} shell input text {input_str}"
-        ret = execute_adb(adb_command)
-        return ret
+    def text(self, input_str, use_adb_keyboard=False):
+        if use_adb_keyboard:
+            try:
+                text = input_str.replace("\\n", "_").replace("\n", "_")
+                for char in text:
+                    if char == ' ':
+                        command = f"adb -s {self.device} shell input text %s"
+                        subprocess.run(command, capture_output=True, text=True, shell=True)
+                    elif char == '_':
+                        command = f"adb -s {self.device} shell input keyevent 66"
+                        subprocess.run(command, capture_output=True, text=True, shell=True)
+                    elif 'a' <= char <= 'z' or 'A' <= char <= 'Z' or char.isdigit():
+                        command = f"adb -s {self.device} shell input text {char}"
+                        subprocess.run(command, capture_output=True, text=True, shell=True)
+                    elif char in '-.,!?@\'°/:;()':
+                        command = f"adb -s {self.device} shell input text \"{char}\""
+                        subprocess.run(command, capture_output=True, text=True, shell=True)
+                    else:
+                        command = f"adb -s {self.device} shell am broadcast -a ADB_INPUT_TEXT --es msg \"{char}\""
+                        subprocess.run(command, capture_output=True, text=True, shell=True)
+                return ""
+            except:
+                return "ERROR"
+        else:
+            input_str = input_str.replace(" ", "%s")
+            input_str = input_str.replace("'", "")
+            adb_command = f"adb -s {self.device} shell input text {input_str}"
+            ret = execute_adb(adb_command)
+            return ret
 
     def long_press(self, x, y, duration=1000):
         adb_command = f"adb -s {self.device} shell input swipe {x} {y} {x} {y} {duration}"
